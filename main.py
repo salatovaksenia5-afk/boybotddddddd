@@ -1,101 +1,87 @@
 import asyncio
-import datetime
 import random
+from datetime import datetime, time, timedelta
+
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.filters import Text
+
+from storage import boys, facts, reactions, compliments, nikita_reactions
 
 BOT_TOKEN = "8413897465:AAHOLQB_uKo0YVdOfqGtEq0jdjzHjj8C1-U"
-async def main():
-    bot = Bot(token=BOT_TOKEN)
-    await bot.delete_webhook()  # Убираем webhook
-    print("Webhook удалён, можно запускать polling")
-    await bot.session.close()
+NIKITA_ID = 123456789
+YOUR_ID = 987654321
 
-# ====== Данные ======
-facts = {}  # {имя_парня: [{"text": факт, "reaction": None}]}
-compliments = [ 
-    "Ты отличный человек",
-    "все хуесосы, ты один хороший",
-    "Ты очень умный дядька",
-    "Ты мой самый лучший друг ❤️",
-    "ты просто невероятный!!"
-]
-reactions_list = ["пиздец", "сразу замуж", "норм", "ниче", "непонятно", "промолчу"]
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher()
 
-# ====== Добавление факта ======
-async def add_fact(subject: str, fact: str):
-    if subject not in facts:
-        facts[subject] = []
-    facts[subject].append({"text": fact, "reaction": None})
-    # кнопки для реакции Никиты
-    keyboard = InlineKeyboardMarkup(row_width=3)
-    buttons = [InlineKeyboardButton(text=r, callback_data=f"{subject}|{len(facts[subject])-1}|{r}") for r in reactions_list]
-    keyboard.add(*buttons)
-    # отправляем Никите (нужен его chat_id)
-    nikita_chat_id = "тут_chat_id_Никиты"
-    await bot.send_message(chat_id=nikita_chat_id, text=f"Новый факт про {subject}: {fact}", reply_markup=keyboard)
+# ----------------- Хэндлеры -----------------
 
-# ====== Обработка реакции Никиты ======
-@dp.callback_query()
-async def reaction_handler(callback: types.CallbackQuery):
-    data = callback.data.split("|")
-    subject, index, reaction = data[0], int(data[1]), data[2]
-    facts[subject][index]["reaction"] = reaction
-    # уведомление тебе
-    your_chat_id = "тут_твой_chat_id"
-    await bot.send_message(chat_id=your_chat_id, text=f"Никита отреагировал на {subject}: {reaction}")
-    await callback.answer("Реакция принята!")
-
-# ====== Подсчёт рейтинга ======
-@dp.message(commands=["rating"])
-async def rating_handler(message: types.Message):
-    rating = {}
-    for subject, items in facts.items():
-        positive = 0
-        negative = 0
-        for item in items:
-            if item["reaction"] in ["пиздец", "сразу замуж", "норм"]:
-                positive += 1
-            elif item["reaction"] in ["ниче", "непонятно", "промолчу"]:
-                negative += 1
-        rating[subject] = {"positive": positive, "negative": negative}
-    text = "\n".join([f"{s}: 👍 {v['positive']} | 👎 {v['negative']}" for s,v in rating.items()])
-    await message.answer(f"Рейтинг парней:\n{text}")
-
-# ====== Добавление факта через команду ======
-@dp.message(commands=["addfact"])
-async def addfact_command(message: types.Message):
+# Добавление факта о парне
+@dp.message(Text(startswith="факт:"))
+async def add_fact(message: types.Message):
     try:
-        parts = message.text.split(maxsplit=2)
-        subject, fact = parts[1], parts[2]
-        await add_fact(subject, fact)
-        await message.answer(f"Факт про {subject} добавлен!")
-    except IndexError:
-        await message.answer("Использование: /addfact <имя_парня> <факт>")
+        _, boy_name, fact_text = message.text.split(":", 2)
+    except ValueError:
+        await message.answer("Неверный формат. Используй: факт:ИмяПарня:Описание")
+        return
 
-# ====== Отправка комплиментов ======
-async def send_compliment():
-    comp = random.choice(compliments)
-    nikita_chat_id = "тут_chat_id_Никиты"
-    await bot.send_message(chat_id=nikita_chat_id, text=comp)
+    facts.setdefault(boy_name, []).append(fact_text)
+    await message.answer(f"Факт про {boy_name} добавлен!")
 
-# ====== Планировщик комплиментов два раза в день ======
-async def schedule_compliments():
+    # Кнопки для Никиты
+    keyboard = InlineKeyboardMarkup(row_width=3)
+    buttons = [InlineKeyboardButton(text=r, callback_data=f"react:{boy_name}:{fact_text}:{r}") for r in reactions]
+    keyboard.add(*buttons)
+
+    await bot.send_message(NIKITA_ID, f"Новый факт про {boy_name}: {fact_text}\nВыбери реакцию:", reply_markup=keyboard)
+
+# Обработка кнопок с реакциями
+@dp.callback_query(Text(startswith="react:"))
+async def handle_reaction(callback: types.CallbackQuery):
+    _, boy_name, fact_text, reaction = callback.data.split(":", 3)
+    nikita_reactions.setdefault(boy_name, []).append((fact_text, reaction))
+    
+    await callback.answer(f"Ты выбрал реакцию: {reaction}")
+    
+    # Уведомление тебе
+    await bot.send_message(YOUR_ID, f"Никита отреагировал на факт про {boy_name}: {reaction}")
+
+# Показ рейтинга
+@dp.message(Text("рейтинг"))
+async def show_ranking(message: types.Message):
+    ranking = []
+    for boy_name in boys:
+        score = len(nikita_reactions.get(boy_name, []))
+        ranking.append((boy_name, score))
+    ranking.sort(key=lambda x: x[1], reverse=True)
+
+    text = "Рейтинг парней по реакции Никиты:\n"
+    for name, score in ranking:
+        text += f"{name}: {score} реакций\n"
+
+    await message.answer(text)
+
+# ----------------- Авто-комплименты -----------------
+async def send_daily_compliment():
     while True:
-        now = datetime.datetime.now()
-        if now.hour in [10, 18] and now.minute == 0:
-            await send_compliment()
-            await asyncio.sleep(60)
-        await asyncio.sleep(10)
+        now = datetime.now()
+        for send_time in [time(10, 0), time(20, 0)]:
+            target_datetime = datetime.combine(now.date(), send_time)
+            if now > target_datetime:
+                target_datetime += timedelta(days=1)
+            wait_seconds = (target_datetime - now).total_seconds()
+            await asyncio.sleep(wait_seconds)
+            compliment = random.choice(compliments)
+            await bot.send_message(NIKITA_ID, f"Комплимент для Никиты: {compliment}")
 
-# ====== Основной запуск ======
+# ----------------- Запуск -----------------
 async def main():
-    await bot.delete_webhook()
-    print("Webhook удалён, стартуем polling...")
-    asyncio.create_task(schedule_compliments())
+    asyncio.create_task(send_daily_compliment())
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
   
