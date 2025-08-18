@@ -1,29 +1,39 @@
-from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+# main.py
+from fastapi import FastAPI
 import asyncio
+from aiogram import Bot, Dispatcher, types
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 import storage
-from datetime import datetime, timedelta
 
-BOT_TOKEN = "8413897465:AAHOLQB_uKo0YVdOfqGtEq0jdjzHjj8C1-U"
+BOT_TOKEN = "ВАШ_ТОКЕН_ТЕЛЕГРАМ"
 bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher()
+dp = Dispatcher(bot)
 
-# ===================== Команды =====================
+# ====== Команды ======
+@dp.message(commands=["compliments"])
+async def send_compliments(message: types.Message):
+    comp_list = storage.get_compliments()
+    text = "Текущие комплименты:\n" + "\n".join(comp_list)
+    await message.answer(text)
 
-@dp.message(Command(commands=["addfact"]))
+@dp.message(commands=["addfact"])
 async def add_fact_cmd(message: types.Message):
     try:
         _, subject, *text = message.text.split()
         fact_text = " ".join(text)
         storage.add_fact(subject, fact_text)
 
-        # Создаем инлайн-кнопки с реакциями
         keyboard = InlineKeyboardMarkup(row_width=3)
-        buttons = [InlineKeyboardButton(text=r, callback_data=f"{fact_text}|{r}") for r in storage.available_reactions]
+        buttons = [
+            InlineKeyboardButton(text=r, callback_data=f"{fact_text}|{r}") 
+            for r in storage.available_reactions
+        ]
         keyboard.add(*buttons)
 
-        await message.answer(f"Факт про {subject} добавлен:\n{fact_text}\nВыберите реакцию:", reply_markup=keyboard)
+        await message.answer(
+            f"Факт про {subject} добавлен:\n{fact_text}\nВыберите реакцию:", 
+            reply_markup=keyboard
+        )
     except Exception:
         await message.answer("Используй: /addfact <Имя> <факт>")
 
@@ -34,38 +44,14 @@ async def handle_reaction(callback: types.CallbackQuery):
     await callback.message.edit_text(f"{callback.message.text}\nВыбрана реакция: {reaction}")
     await callback.answer("Реакция сохранена!")
 
-# ===================== Автокомплименты =====================
+# ====== FastAPI приложение ======
+app = FastAPI()
 
-async def daily_compliments():
-    await bot.wait_until_ready()
-    while True:
-        now = datetime.now()
-        next_run = datetime.combine(now.date(), datetime.min.time()) + timedelta(hours=12)
-        if now > next_run:
-            next_run += timedelta(days=1)
-        wait_seconds = (next_run - now).total_seconds()
-        await asyncio.sleep(wait_seconds)
-        compliment = storage.get_random_compliment()
-        await bot.send_message(chat_id="ID_НИКИТЫ", text=compliment)
+@app.on_event("startup")
+async def on_startup():
+    # Запуск polling
+    asyncio.create_task(dp.start_polling())
 
-# ===================== Запуск =====================
-
-async def main():
-    asyncio.create_task(daily_compliments())
-    from aiogram import webhook
-    await dp.start_webhook(
-        dispatcher=dp,
-        webhook_path="/webhook",
-        on_startup=None,
-        on_shutdown=None,
-        skip_updates=True,
-        bot=bot,
-        host="0.0.0.0",
-        port=10000
-    )
-
-if __name__ == "__main__":
-    asyncio.run(main())
-# ========= ASGI app для Render =========
-# Render ожидает объект с именем 'app'
-app = dp
+@app.get("/")
+async def root():
+    return {"status": "ok"}
