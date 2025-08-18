@@ -5,8 +5,11 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 BOT_TOKEN = "8413897465:AAHOLQB_uKo0YVdOfqGtEq0jdjzHjj8C1-U"
-bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher(bot)
+async def main():
+    bot = Bot(token=BOT_TOKEN)
+    await bot.delete_webhook()  # Убираем webhook
+    print("Webhook удалён, можно запускать polling")
+    await bot.session.close()
 
 # ====== Данные ======
 facts = {}  # {имя_парня: [{"text": факт, "reaction": None}]}
