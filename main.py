@@ -1,104 +1,82 @@
-from aiogram import Bot, Dispatcher, F
-from aiogram.filters import Command
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 import asyncio
+from aiogram import Bot, Dispatcher, F
+from aiogram.types import Message
+from aiogram.filters import Command
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.types import InlineKeyboardButton
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.fsm.context import FSMContext
+from aiogram import Router
 import storage
-import random
 
-BOT_TOKEN = "8413897465:AAHOLQB_uKo0YVdOfqGtEq0jdjzHjj8C1-U"
-OWNER_ID = 123456789  # твой Telegram ID
-FRIEND_ID = 987654321  # Никита
+BOT_TOKEN = "8413897465:AAHOLQB_uKo0YVdOfqGtEq0jdjzHjj8C1-U"  # вставь сюда свой токен
 
-bot = Bot(BOT_TOKEN)
-dp = Dispatcher()
+# Инициализация бота
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher(storage=MemoryStorage())
 
-# ---------- Проверка владельца ----------
-def _is_owner(user_id: int) -> bool:
-    return user_id == OWNER_ID
-
-# ---------- КОМАНДЫ ----------
-@dp.message(Command("add_compliment"))
-async def add_compliment(message: Message):
-    if not _is_owner(message.from_user.id):
-        await message.answer("Только владелец может добавлять комплименты.")
+# --- Добавление факта ---
+@dp.message(Command("addfact"))
+async def add_fact_handler(message: Message, state: FSMContext):
+    # Формат: /addfact <имя> <факт>
+    parts = message.text.split(maxsplit=2)
+    if len(parts) < 3:
+        await message.answer("Используй: /addfact Имя Факт")
         return
-    text = message.text.removeprefix("/add_compliment").strip()
-    if not text:
-        await message.answer("Напиши текст комплимента после команды.")
-        return
-    storage.add_compliment(text)
-    await message.answer(f"Комплимент добавлен:\n{text}")
+    subject, fact = parts[1], parts[2]
+    storage.add_fact(subject, fact)
+    await message.answer(f"Факт добавлен для {subject}: {fact}")
 
-@dp.message(Command("compliments"))
-async def list_compliments(message: Message):
-    if not _is_owner(message.from_user.id):
-        await message.answer("Только владелец может смотреть комплименты.")
+# --- Просмотр фактов ---
+@dp.message(Command("facts"))
+async def list_facts_handler(message: Message):
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        await message.answer("Используй: /facts Имя")
         return
-    items = storage.get_compliments()
-    if not items:
-        await message.answer("Комплиментов пока нет.")
+    subject = parts[1]
+    facts = storage.list_facts(subject)
+    if not facts:
+        await message.answer(f"Фактов для {subject} нет.")
         return
-    txt = "\n".join([f"• {c}" for c in items])
-    await message.answer("Список комплиментов:\n" + txt)
+    # Создаем инлайн-кнопки для реакций друга
+    for fact in facts:
+        kb = InlineKeyboardBuilder()
+        for reaction in ["норм", "пиздец", "сразу замуж", "ниче", "непонятно", "промолчу"]:
+            kb.add(InlineKeyboardButton(text=reaction, callback_data=f"{subject}|{fact}|{reaction}"))
+        kb.adjust(3)
+        await message.answer(f"Факт про {subject}: {fact}", reply_markup=kb.as_markup())
 
-@dp.message(Command("set_reactions"))
-async def set_reactions(message: Message):
-    if not _is_owner(message.from_user.id):
-        await message.answer("Только владелец может устанавливать реакции.")
-        return
-    text = message.text.removeprefix("/set_reactions").strip()
-    if not text:
-        await message.answer("Напиши реакции через запятую, например: 👍,❤️,🔥")
-        return
-    reactions = [r.strip() for r in text.split(",") if r.strip()]
-    storage.set_reactions(reactions)
-    await message.answer(f"Реакции установлены:\n{', '.join(reactions)}")
+# --- Обработка реакции друга ---
+@dp.callback_query()
+async def reaction_callback(callback):
+    data = callback.data.split("|")
+    subject, fact, reaction = data
+    storage.add_reaction(reaction)
+    await callback.message.edit_reply_markup(None)
+    await callback.message.answer(f"Друг оценил факт про {subject}: {reaction}")
+    # Уведомление тебе
+    await bot.send_message(chat_id="ТВОЙ_CHAT_ID", text=f"{subject} факт оценен: {reaction}")
+    await callback.answer()
 
-@dp.message(Command("reactions"))
-async def show_reactions(message: Message):
-    if not _is_owner(message.from_user.id):
-        await message.answer("Только владелец может смотреть реакции.")
-        return
-    reactions = storage.get_reactions()
-    if not reactions:
-        await message.answer("Реакций пока нет.")
-        return
-    await message.answer("Текущие реакции:\n" + ", ".join(reactions))
-
-# ---------- ФАКТ С РЕАКЦИЯМИ ----------
-async def send_fact_with_reactions(fact: str):
-    reactions = storage.get_reactions()
-    if not reactions:
-        reactions = ["👍", "❤️", "🔥"]
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text=r, callback_data=f"react:{r}") for r in reactions]
-        ]
-    )
-    await bot.send_message(FRIEND_ID, fact, reply_markup=keyboard)
-
-@dp.callback_query(F.filter(lambda c: c.data.startswith("react:")))
-async def handle_reaction(callback: CallbackQuery):
-    reaction = callback.data.split(":", 1)[1]
-    user_name = callback.from_user.full_name
-    await bot.send_message(OWNER_ID, f"Никита ({user_name}) выбрал реакцию: {reaction}")
-    await callback.message.edit_reply_markup(reply_markup=None)
-    await callback.answer("Спасибо за реакцию!")
-
-# ---------- ЕЖЕДНЕВНЫЙ КОМПЛИМЕНТ ----------
-async def daily_compliment():
+# --- Ежедневные комплименты Никите ---
+async def daily_nikita_compliment():
     while True:
-        compliments = storage.get_compliments()
-        if compliments:
-            text = random.choice(compliments)
-            await bot.send_message(FRIEND_ID, f"💌 Никита, {text}")
-        await asyncio.sleep(24*60*60)  # раз в сутки
+        now = asyncio.get_event_loop().time()
+        # Ждем до 12:00 по серверу
+        import datetime
+        target = datetime.datetime.now().replace(hour=12, minute=0, second=0, microsecond=0)
+        delta = (target - datetime.datetime.now()).total_seconds()
+        if delta < 0:
+            delta += 86400  # если уже после 12:00, ждем до следующего дня
+        await asyncio.sleep(delta)
+        await bot.send_message(chat_id="CHAT_ID_НИКИТЫ", text=storage.get_random_nikita_compliment())
+        await asyncio.sleep(60)  # чтобы не зациклить
 
-# ---------- ЗАПУСК ----------
+# --- Запуск ---
 async def main():
-    asyncio.create_task(daily_compliment())
+    asyncio.create_task(daily_nikita_compliment())
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
-
