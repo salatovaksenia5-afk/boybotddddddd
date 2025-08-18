@@ -1,1 +1,5 @@
-python-telegram-bot
+aiogram>=3.3,<4.0
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.5
+python-dotenv>=1.0
