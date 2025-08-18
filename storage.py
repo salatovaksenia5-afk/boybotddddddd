@@ -1,47 +1,63 @@
-import datetime
 import random
+import asyncio
 
-# Словарь фактов: {парень: [{"текст": ..., "дата": ..., "оценка": None, "reacted_by": []}]}
-facts = {}
-
-# Список комплиментов для Никиты
+# Хранилища
+facts = {}  # {имя_парня: [{"текст": факт, "оценка": None}]}
 compliments = [compliments = 
     "Ты отличный человек",
     "все хуесосы, ты один хороший",
     "Ты очень умный дядька",
     "Ты мой самый лучший друг ❤️",
     "ты просто невероятный!!"
-]
+]  # список комплиментов для Никиты
 
+# Добавление факта про парня
 def add_fact(subject, text):
-    facts.setdefault(subject, []).append({
-        "текст": text,
-        "дата": str(datetime.date.today()),
-        "оценка": None,
-        "reacted_by": []
-    })
+    if subject not in facts:
+        facts[subject] = []
+    facts[subject].append({"текст": text, "оценка": None})
 
-def rate_fact(subject, index, rating, user):
-    fact = facts[subject][index]
-    fact["оценка"] = rating
-    if user not in fact["reacted_by"]:
-        fact["reacted_by"].append(user)
-
+# Получение фактов
 def list_facts(subject=None):
     if subject:
         return facts.get(subject, [])
     return facts
 
+# Никита оценивает факт
+def react_to_fact(subject, index, reaction):
+    try:
+        facts[subject][index]["оценка"] = reaction
+        return True
+    except (IndexError, KeyError):
+        return False
+
+# Добавление комплимента
 def add_compliment(text):
     compliments.append(text)
 
+# Получение случайного комплимента
 def get_random_compliment():
-    return random.choice(compliments) if compliments else None
+    if compliments:
+        return random.choice(compliments)
+    return None
 
-def get_unreacted_facts(user):
-    result = []
-    for subject, fact_list in facts.items():
-        for idx, fact in enumerate(fact_list):
-            if user not in fact["reacted_by"]:
-                result.append((subject, idx, fact))
+# Подсчет рейтинга парней по реакциям
+def rating():
+    score_map = {
+        "пиздец": 1,
+        "сразу замуж": 5,
+        "норм": 3,
+        "ниче": 2,
+        "непонятно": 0,
+        "промолчу": 0
+    }
+    result = {}
+    for subject, lst in facts.items():
+        total = 0
+        count = 0
+        for f in lst:
+            if f["оценка"]:
+                total += score_map.get(f["оценка"], 0)
+                count += 1
+        result[subject] = total if count > 0 else 0
     return result
