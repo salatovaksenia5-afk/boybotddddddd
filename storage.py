@@ -1,31 +1,8 @@
-import random
+# Список доступных реакций
+available_reactions = ["пиздец", "сразу замуж", "норм", "ниче", "непонятно", "промолчу"]
 
-# ======== ФАКТЫ ========
-# словарь вида: {имя: [факт1, факт2, ...]}
-facts = {}
-
-def add_fact(name, fact):
-    if name not in facts:
-        facts[name] = []
-    facts[name].append(fact)
-
-def list_facts(name):
-    return facts.get(name, [])
-
-# ======== РЕАКЦИИ ========
-# список всех реакций
-reactions = [
-    "пиздец", "сразу замуж", "норм", "ниче", "непонятно", "промолчу"
-]
-
-def add_reaction(name, reaction):
-    reactions.append(reaction)
-
-def list_reactions():
-    return reactions
-
-# ======== КОМПЛИМЕНТЫ НИКИТЕ ========
-nikita_compliments = [
+# Список комплиментов
+compliments = [
     "Ты отличный человек",
     "все хуесосы, ты один хороший",
     "Ты очень умный дядька",
@@ -33,8 +10,25 @@ nikita_compliments = [
     "ты просто невероятный!!"
 ]
 
-def get_nikita_compliments():
-    return nikita_compliments
+# Словарь фактов: {subject: [факт1, факт2, ...]}
+facts = {}
 
-def get_random_nikita_compliment():
-    return random.choice(nikita_compliments)
+# Словарь реакций к фактам: {факт: [реакция1, реакция2, ...]}
+fact_reactions = {}
+
+# ===== Функции для работы =====
+def add_fact(subject: str, fact_text: str):
+    if subject not in facts:
+        facts[subject] = []
+    facts[subject].append(fact_text)
+    fact_reactions[fact_text] = []
+
+def list_facts(subject: str):
+    return facts.get(subject, [])
+
+def add_reaction(fact_text: str, reaction: str):
+    if fact_text in fact_reactions:
+        fact_reactions[fact_text].append(reaction)
+
+def get_compliments():
+    return compliments
