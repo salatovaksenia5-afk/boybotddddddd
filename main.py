@@ -1,87 +1,88 @@
+import logging
 import asyncio
 import random
-from datetime import datetime, time, timedelta
-
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from aiogram.filters import Text
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.utils import executor
 
-from storage import boys, facts, reactions, compliments, nikita_reactions
-
+# Вставь свой токен сюда
 BOT_TOKEN = "8413897465:AAHOLQB_uKo0YVdOfqGtEq0jdjzHjj8C1-U"
-NIKITA_ID = 123456789
-YOUR_ID = 987654321
+
+logging.basicConfig(level=logging.INFO)
 
 bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher()
+dp = Dispatcher(bot)
 
-# ----------------- Хэндлеры -----------------
+# --- Хранилище ---
+facts = {}  # {имя_парня: [факт1, факт2, ...]}
+reactions = ["пиздец", "сразу замуж", "норм", "ниче", "непонятно", "промолчу"]
+compliments = [
+    "Ты отличный человек",
+    "все хуесосы, ты один хороший",
+    "Ты очень умный дядька",
+    "Ты мой самый лучший друг ❤️",
+    "ты просто невероятный!!"
+]
 
-# Добавление факта о парне
-@dp.message(Text(startswith="факт:"))
-async def add_fact(message: types.Message):
+# Для хранения реакций Никиты
+nickita_reactions = {}
+
+# --- Утилиты ---
+def get_facts_keyboard(name):
+    kb = InlineKeyboardMarkup()
+    for idx, fact in enumerate(facts.get(name, [])):
+        kb.add(InlineKeyboardButton(f"{fact}", callback_data=f"react:{name}:{idx}"))
+    return kb
+
+async def send_compliment():
+    while True:
+        await asyncio.sleep(12*60*60)  # каждые 12 часов
+        compliment = random.choice(compliments)
+        await bot.send_message(chat_id="YOUR_CHAT_ID_NIKITA", text=f"Комплимент: {compliment}")
+
+# --- Команды ---
+@dp.message_handler(commands=["start"])
+async def cmd_start(message):
+    await message.reply("Привет! Добавляй факты про парней командой: факт:имя:текст")
+
+@dp.message_handler(lambda message: message.text.lower().startswith("факт:"))
+async def add_fact(message):
     try:
-        _, boy_name, fact_text = message.text.split(":", 2)
+        _, name, text = message.text.split(":", 2)
     except ValueError:
-        await message.answer("Неверный формат. Используй: факт:ИмяПарня:Описание")
+        await message.reply("Неправильный формат. Используй факт:имя:текст")
         return
 
-    facts.setdefault(boy_name, []).append(fact_text)
-    await message.answer(f"Факт про {boy_name} добавлен!")
+    facts.setdefault(name, []).append(text)
+    await message.reply(f"Факт добавлен про {name} ✅")
 
-    # Кнопки для Никиты
-    keyboard = InlineKeyboardMarkup(row_width=3)
-    buttons = [InlineKeyboardButton(text=r, callback_data=f"react:{boy_name}:{fact_text}:{r}") for r in reactions]
-    keyboard.add(*buttons)
+    # Отправляем Никите кнопки для реакции
+    kb = get_facts_keyboard(name)
+    await bot.send_message(chat_id="1304999368", text=f"Новый факт про {name}:", reply_markup=kb)
 
-    await bot.send_message(NIKITA_ID, f"Новый факт про {boy_name}: {fact_text}\nВыбери реакцию:", reply_markup=keyboard)
+@dp.callback_query_handler(lambda c: c.data.startswith("react:"))
+async def handle_reaction(callback):
+    _, name, idx = callback.data.split(":")
+    idx = int(idx)
+    fact_text = facts[name][idx]
+    reaction = random.choice(reactions)
+    nickita_reactions.setdefault(name, []).append((fact_text, reaction))
+    await bot.send_message(chat_id="1026494049", text=f"Никита отреагировал на факт про {name}: {reaction}")
+    await callback.answer("Реакция учтена!")
 
-# Обработка кнопок с реакциями
-@dp.callback_query(Text(startswith="react:"))
-async def handle_reaction(callback: types.CallbackQuery):
-    _, boy_name, fact_text, reaction = callback.data.split(":", 3)
-    nikita_reactions.setdefault(boy_name, []).append((fact_text, reaction))
-    
-    await callback.answer(f"Ты выбрал реакцию: {reaction}")
-    
-    # Уведомление тебе
-    await bot.send_message(YOUR_ID, f"Никита отреагировал на факт про {boy_name}: {reaction}")
+@dp.message_handler(lambda message: message.text.lower() == "рейтинг")
+async def show_ranking(message):
+    text = "Рейтинг парней:\n"
+    for name, reacts in nickita_reactions.items():
+        positive = sum(1 for _, r in reacts if r in ["сразу замуж", "норм", "ниче"])
+        negative = sum(1 for _, r in reacts if r in ["пиздец", "непонятно", "промолчу"])
+        text += f"{name}: +{positive}, -{negative}\n"
+    await message.reply(text)
 
-# Показ рейтинга
-@dp.message(Text("рейтинг"))
-async def show_ranking(message: types.Message):
-    ranking = []
-    for boy_name in boys:
-        score = len(nikita_reactions.get(boy_name, []))
-        ranking.append((boy_name, score))
-    ranking.sort(key=lambda x: x[1], reverse=True)
-
-    text = "Рейтинг парней по реакции Никиты:\n"
-    for name, score in ranking:
-        text += f"{name}: {score} реакций\n"
-
-    await message.answer(text)
-
-# ----------------- Авто-комплименты -----------------
-async def send_daily_compliment():
-    while True:
-        now = datetime.now()
-        for send_time in [time(10, 0), time(20, 0)]:
-            target_datetime = datetime.combine(now.date(), send_time)
-            if now > target_datetime:
-                target_datetime += timedelta(days=1)
-            wait_seconds = (target_datetime - now).total_seconds()
-            await asyncio.sleep(wait_seconds)
-            compliment = random.choice(compliments)
-            await bot.send_message(NIKITA_ID, f"Комплимент для Никиты: {compliment}")
-
-# ----------------- Запуск -----------------
-async def main():
-    asyncio.create_task(send_daily_compliment())
-    await dp.start_polling(bot)
+# --- Запуск комплиментов ---
+loop = asyncio.get_event_loop()
+loop.create_task(send_compliment())
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    executor.start_polling(dp, skip_updates=True)
 
-
-  
