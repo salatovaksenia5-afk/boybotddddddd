@@ -78,7 +78,7 @@ async def _notify_owner(text: str):
 async def start(message: Message):
     who = "владелица" if _is_owner(message.from_user.id) else ("друг" if _is_friend(message.from_user.id) else "пользователь")
     await message.answer(
-        "Привет! Я бот с фактами и комплиментами.\n\n"
+        "Привет! Я бот с фактами.\n\n"
         "Команды:\n"
         "/myid — показать ваш Telegram ID\n"
         "/reactions — показать текущие реакции\n"
