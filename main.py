@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 import storage
 
-BOT_TOKEN = "ВАШ_ТОКЕН_ТЕЛЕГРАМ"
+BOT_TOKEN = "8413897465:AAHOLQB_uKo0YVdOfqGtEq0jdjzHjj8C1-U"
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(bot)
 
