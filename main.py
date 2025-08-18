@@ -28,6 +28,7 @@ app = FastAPI()
 
 WARSAW = ZoneInfo("Europe/Warsaw")
 
+
 COMPLIMENTS = [
     "Никита, ты самый крутой. 🚀",
     "Никита, ты лучший. Не забывай об этом. 💪",
@@ -86,6 +87,18 @@ async def start(message: Message):
         "<code>Имя: сам факт...</code>\n\n"
         f"Вы распознаны как: {who}."
     )
+@dp.message(F.text == "/compliments")
+async def list_compliments(message: Message):
+    if not _is_owner(message.from_user.id):
+        await message.answer("Эта команда доступна только владелице.")
+        return
+    items = storage.get_compliments()
+    if not items:
+        await message.answer("Комплиментов пока нет.")
+        return
+    txt = "\n".join([f"• {c}" for c in items])
+    await message.answer("Список комплиментов (только для тебя):\n" + txt)
+   
 
 @dp.message(F.text == "/myid")
 async def myid(message: Message):
