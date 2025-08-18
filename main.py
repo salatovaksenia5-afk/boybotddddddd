@@ -66,3 +66,6 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+# ========= ASGI app для Render =========
+# Render ожидает объект с именем 'app'
+app = dp
