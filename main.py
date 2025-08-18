@@ -5,7 +5,7 @@ import asyncio
 import storage
 import random
 
-BOT_TOKEN = "ВАШ_ТОКЕН"
+BOT_TOKEN = "8413897465:AAHOLQB_uKo0YVdOfqGtEq0jdjzHjj8C1-U"
 OWNER_ID = 123456789  # твой Telegram ID
 FRIEND_ID = 987654321  # Никита
 
