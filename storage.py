@@ -1,8 +1,11 @@
-# Список доступных реакций
-available_reactions = ["пиздец", "сразу замуж", "норм", "ниче", "непонятно", "промолчу"]
+import datetime
+import random
 
-# Список комплиментов
-compliments = [
+# Словарь фактов: {парень: [{"текст": ..., "дата": ..., "оценка": None, "reacted_by": []}]}
+facts = {}
+
+# Список комплиментов для Никиты
+compliments = [compliments = 
     "Ты отличный человек",
     "все хуесосы, ты один хороший",
     "Ты очень умный дядька",
@@ -10,25 +13,35 @@ compliments = [
     "ты просто невероятный!!"
 ]
 
-# Словарь фактов: {subject: [факт1, факт2, ...]}
-facts = {}
+def add_fact(subject, text):
+    facts.setdefault(subject, []).append({
+        "текст": text,
+        "дата": str(datetime.date.today()),
+        "оценка": None,
+        "reacted_by": []
+    })
 
-# Словарь реакций к фактам: {факт: [реакция1, реакция2, ...]}
-fact_reactions = {}
+def rate_fact(subject, index, rating, user):
+    fact = facts[subject][index]
+    fact["оценка"] = rating
+    if user not in fact["reacted_by"]:
+        fact["reacted_by"].append(user)
 
-# ===== Функции для работы =====
-def add_fact(subject: str, fact_text: str):
-    if subject not in facts:
-        facts[subject] = []
-    facts[subject].append(fact_text)
-    fact_reactions[fact_text] = []
+def list_facts(subject=None):
+    if subject:
+        return facts.get(subject, [])
+    return facts
 
-def list_facts(subject: str):
-    return facts.get(subject, [])
+def add_compliment(text):
+    compliments.append(text)
 
-def add_reaction(fact_text: str, reaction: str):
-    if fact_text in fact_reactions:
-        fact_reactions[fact_text].append(reaction)
+def get_random_compliment():
+    return random.choice(compliments) if compliments else None
 
-def get_compliments():
-    return compliments
+def get_unreacted_facts(user):
+    result = []
+    for subject, fact_list in facts.items():
+        for idx, fact in enumerate(fact_list):
+            if user not in fact["reacted_by"]:
+                result.append((subject, idx, fact))
+    return result
