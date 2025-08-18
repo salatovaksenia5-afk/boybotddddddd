@@ -22,7 +22,8 @@ CRON_TOKEN = os.getenv("CRON_TOKEN", "")       # защищает /cron/complime
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN is required")
 
-bot = Bot(BOT_TOKEN, parse_mode="HTML")
+from aiogram.client.default import DefaultBotProperties
+bot = Bot(BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 app = FastAPI()
 
