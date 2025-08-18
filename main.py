@@ -1,82 +1,68 @@
-import asyncio
-from aiogram import Bot, Dispatcher, F
-from aiogram.types import Message
+from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiogram.types import InlineKeyboardButton
-from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.fsm.context import FSMContext
-from aiogram import Router
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+import asyncio
 import storage
+from datetime import datetime, timedelta
 
-BOT_TOKEN = "8413897465:AAHOLQB_uKo0YVdOfqGtEq0jdjzHjj8C1-U"  # вставь сюда свой токен
-
-# Инициализация бота
+BOT_TOKEN = "8413897465:AAHOLQB_uKo0YVdOfqGtEq0jdjzHjj8C1-U"
 bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher(storage=MemoryStorage())
+dp = Dispatcher()
 
-# --- Добавление факта ---
-@dp.message(Command("addfact"))
-async def add_fact_handler(message: Message, state: FSMContext):
-    # Формат: /addfact <имя> <факт>
-    parts = message.text.split(maxsplit=2)
-    if len(parts) < 3:
-        await message.answer("Используй: /addfact Имя Факт")
-        return
-    subject, fact = parts[1], parts[2]
-    storage.add_fact(subject, fact)
-    await message.answer(f"Факт добавлен для {subject}: {fact}")
+# ===================== Команды =====================
 
-# --- Просмотр фактов ---
-@dp.message(Command("facts"))
-async def list_facts_handler(message: Message):
-    parts = message.text.split(maxsplit=1)
-    if len(parts) < 2:
-        await message.answer("Используй: /facts Имя")
-        return
-    subject = parts[1]
-    facts = storage.list_facts(subject)
-    if not facts:
-        await message.answer(f"Фактов для {subject} нет.")
-        return
-    # Создаем инлайн-кнопки для реакций друга
-    for fact in facts:
-        kb = InlineKeyboardBuilder()
-        for reaction in ["норм", "пиздец", "сразу замуж", "ниче", "непонятно", "промолчу"]:
-            kb.add(InlineKeyboardButton(text=reaction, callback_data=f"{subject}|{fact}|{reaction}"))
-        kb.adjust(3)
-        await message.answer(f"Факт про {subject}: {fact}", reply_markup=kb.as_markup())
+@dp.message(Command(commands=["addfact"]))
+async def add_fact_cmd(message: types.Message):
+    try:
+        _, subject, *text = message.text.split()
+        fact_text = " ".join(text)
+        storage.add_fact(subject, fact_text)
 
-# --- Обработка реакции друга ---
+        # Создаем инлайн-кнопки с реакциями
+        keyboard = InlineKeyboardMarkup(row_width=3)
+        buttons = [InlineKeyboardButton(text=r, callback_data=f"{fact_text}|{r}") for r in storage.available_reactions]
+        keyboard.add(*buttons)
+
+        await message.answer(f"Факт про {subject} добавлен:\n{fact_text}\nВыберите реакцию:", reply_markup=keyboard)
+    except Exception:
+        await message.answer("Используй: /addfact <Имя> <факт>")
+
 @dp.callback_query()
-async def reaction_callback(callback):
-    data = callback.data.split("|")
-    subject, fact, reaction = data
-    storage.add_reaction(reaction)
-    await callback.message.edit_reply_markup(None)
-    await callback.message.answer(f"Друг оценил факт про {subject}: {reaction}")
-    # Уведомление тебе
-    await bot.send_message(chat_id="ТВОЙ_CHAT_ID", text=f"{subject} факт оценен: {reaction}")
-    await callback.answer()
+async def handle_reaction(callback: types.CallbackQuery):
+    fact, reaction = callback.data.split("|")
+    storage.add_reaction(fact, reaction)
+    await callback.message.edit_text(f"{callback.message.text}\nВыбрана реакция: {reaction}")
+    await callback.answer("Реакция сохранена!")
 
-# --- Ежедневные комплименты Никите ---
-async def daily_nikita_compliment():
+# ===================== Автокомплименты =====================
+
+async def daily_compliments():
+    await bot.wait_until_ready()
     while True:
-        now = asyncio.get_event_loop().time()
-        # Ждем до 12:00 по серверу
-        import datetime
-        target = datetime.datetime.now().replace(hour=12, minute=0, second=0, microsecond=0)
-        delta = (target - datetime.datetime.now()).total_seconds()
-        if delta < 0:
-            delta += 86400  # если уже после 12:00, ждем до следующего дня
-        await asyncio.sleep(delta)
-        await bot.send_message(chat_id="CHAT_ID_НИКИТЫ", text=storage.get_random_nikita_compliment())
-        await asyncio.sleep(60)  # чтобы не зациклить
+        now = datetime.now()
+        next_run = datetime.combine(now.date(), datetime.min.time()) + timedelta(hours=12)
+        if now > next_run:
+            next_run += timedelta(days=1)
+        wait_seconds = (next_run - now).total_seconds()
+        await asyncio.sleep(wait_seconds)
+        compliment = storage.get_random_compliment()
+        await bot.send_message(chat_id="ID_НИКИТЫ", text=compliment)
 
-# --- Запуск ---
+# ===================== Запуск =====================
+
 async def main():
-    asyncio.create_task(daily_nikita_compliment())
-    await dp.start_polling(bot)
+    asyncio.create_task(daily_compliments())
+    from aiogram import webhook
+    await dp.start_webhook(
+        dispatcher=dp,
+        webhook_path="/webhook",
+        on_startup=None,
+        on_shutdown=None,
+        skip_updates=True,
+        bot=bot,
+        host="0.0.0.0",
+        port=10000
+    )
 
 if __name__ == "__main__":
     asyncio.run(main())
