@@ -22,9 +22,9 @@ logging.basicConfig(level=logging.INFO)
 # Кнопки
 keyboard = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton("Добавить парня")],
-        [KeyboardButton("Добавить факт")],
-        [KeyboardButton("Посмотреть рейтинг")]
+        [KeyboardButton(text="Добавить парня")],
+        [KeyboardButton(text="Добавить факт")],
+        [KeyboardButton(text="Посмотреть рейтинг")]
     ],
     resize_keyboard=True
 )
