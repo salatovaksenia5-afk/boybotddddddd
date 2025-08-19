@@ -29,9 +29,10 @@ dp = Dispatcher()
 
 # ------------------ Клавиатура ------------------
 kb = ReplyKeyboardBuilder()
-kb.add(KeyboardButton("Добавить парня"))
-kb.add(KeyboardButton("Добавить факт"))
-kb.add(KeyboardButton("Посмотреть рейтинг"))
+kb.add(KeyboardButton(text="Добавить парня"))
+kb.add(KeyboardButton(text="Добавить факт"))
+kb.add(KeyboardButton(text="Посмотреть рейтинг"))
+
 
 # ------------------ Хелперы ------------------
 async def send_compliment():
