@@ -3,14 +3,16 @@ from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiohttp import web
 import asyncio
 import random
-from datetime import datetime, time
 import logging
+from datetime import datetime, time
 
 TOKEN = "8413897465:AAHOLQB_uKo0YVdOfqGtEq0jdjzHjj8C1-U"
-NIKITA_ID = 123456789  # ID Никиты
-YOUR_CHAT_ID = 987654321  # Для логов
+WEBHOOK_PATH = "/webhook"
+WEBHOOK_URL = "https://YOUR-RENDER-URL.com" + WEBHOOK_PATH  # замени на свой URL
+YOUR_CHAT_ID = "ID_НИКИТЫ"  # сюда будут отправляться комплименты Никите
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
@@ -18,13 +20,12 @@ dp = Dispatcher(storage=MemoryStorage())
 logging.basicConfig(level=logging.INFO)
 
 # Кнопки
-btn_add_boy = KeyboardButton(text="Добавить парня")
-btn_add_fact = KeyboardButton(text="Добавить факт")
-btn_rating = KeyboardButton(text="Посмотреть рейтинг")
-btn_send_compliment = KeyboardButton(text="Отправить комплимент Никите")
-
 keyboard = ReplyKeyboardMarkup(
-    keyboard=[[btn_add_boy], [btn_add_fact], [btn_rating], [btn_send_compliment]],
+    keyboard=[
+        [KeyboardButton("Добавить парня")],
+        [KeyboardButton("Добавить факт")],
+        [KeyboardButton("Посмотреть рейтинг")]
+    ],
     resize_keyboard=True
 )
 
@@ -43,21 +44,11 @@ compliments = [
     "Никита, я горжусь тобой!"
 ]
 
-nikita_reactions = [
-    "Уважаемый",
-    "Пиздец, беги от него",
-    "Слабоватый",
-    "Пойдёт",
-    "Он самый лучший, выбирай его",
-    "Ничего себе"
-]
-
-# Старт
+# Хэндлеры
 @dp.message(Command("start"))
 async def start(message: types.Message):
     await message.answer("Привет! Выберите действие:", reply_markup=keyboard)
 
-# Обработка кнопок
 @dp.message()
 async def handle_buttons(message: types.Message, state: FSMContext):
     text = message.text
@@ -83,12 +74,6 @@ async def handle_buttons(message: types.Message, state: FSMContext):
             reply += f"{name}: {score}\n"
         await message.answer(reply)
 
-    elif text == "Отправить комплимент Никите":
-        compliment = random.choice(compliments)
-        await bot.send_message(chat_id=NIKITA_ID, text=compliment)
-        logging.info(f"Комплимент отправлен Никите вручную: {compliment}")
-        await message.answer(f"Комплимент отправлен Никите: {compliment}")
-
     else:
         current_state = await state.get_state()
         if current_state == "adding_boy":
@@ -106,37 +91,46 @@ async def handle_buttons(message: types.Message, state: FSMContext):
             data = await state.get_data()
             boy = data["current_boy"]
             boys[boy]["факты"].append(text)
-            # Отправляем Никите факт + случайная реакция
-            reaction = random.choice(nikita_reactions)
-            await bot.send_message(chat_id=NIKITA_ID, text=f"Факт о {boy}: {text}\nРеакция: {reaction}")
-            logging.info(f"Факт о {boy} отправлен Никите: {text} / Реакция: {reaction}")
-            await message.answer(f"Факт для {boy} добавлен и отправлен Никите!")
+            # Отправляем факт Никите
+            await bot.send_message(chat_id=YOUR_CHAT_ID, text=f"Факт о {boy}: {text}")
+            await message.answer(f"Факт для {boy} добавлен!")
             await state.clear()
         else:
             await message.answer("Выберите действие с помощью кнопок.")
 
-# Функция отправки комплиментов по времени
-async def send_compliment():
+# Комплименты Никите
+async def send_compliments():
     while True:
         now = datetime.now().time()
-        if time(10, 0) <= now <= time(10, 5) or time(18, 0) <= now <= time(18, 5):
+        if (time(10, 0) <= now <= time(10, 5)) or (time(18, 0) <= now <= time(18, 5)):
             compliment = random.choice(compliments)
-            await bot.send_message(chat_id=NIKITA_ID, text=compliment)
-            logging.info(f"Комплимент отправлен Никите: {compliment}")
+            await bot.send_message(chat_id=YOUR_CHAT_ID, text=compliment)
+            logging.info(f"Комплимент отправлен: {compliment}")
         await asyncio.sleep(60)
 
-# Запуск
-async def main():
-    try:
-        logging.info("Бот запущен!")
-        asyncio.create_task(send_compliment())
-        await dp.start_polling(bot)
-    finally:
-        await bot.session.close()
+# Webhook
+async def handle(request):
+    update = types.Update(**await request.json())
+    await dp.process_update(update)
+    return web.Response()
+
+async def on_startup(app):
+    await bot.set_webhook(WEBHOOK_URL)
+    asyncio.create_task(send_compliments())
+    logging.info("Webhook установлен и задача комплиментов запущена")
+
+async def on_shutdown(app):
+    await bot.delete_webhook()
+    await bot.session.close()
+    logging.info("Webhook удалён")
+
+app = web.Application()
+app.router.add_post(WEBHOOK_PATH, handle)
+app.on_startup.append(on_startup)
+app.on_cleanup.append(on_shutdown)
 
 if __name__ == "__main__":
-    asyncio.run(main())
-
+    web.run_app(app, host="0.0.0.0", port=8000)
 
 
 
