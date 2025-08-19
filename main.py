@@ -24,10 +24,9 @@ reactions = ["пиздец", "сразу замуж", "норм", "ниче", "�
 
 # ================== Кнопки ==================
 kb = ReplyKeyboardBuilder()
-kb.add(KeyboardButton("Добавить парня"))
-kb.add(KeyboardButton("Добавить факт"))
-kb.add(KeyboardButton("Посмотреть рейтинг"))
-keyboard = kb.as_markup(resize_keyboard=True)
+kb.add(KeyboardButton(text="Добавить парня"))
+kb.add(KeyboardButton(text="Добавить факт"))
+kb.add(KeyboardButton(text="Посмотреть рейтинг"))
 
 # ================== Хендлеры ==================
 @router.message(Command(commands=["start"]))
