@@ -9,7 +9,8 @@ from datetime import datetime, time
 import logging
 
 TOKEN = "8413897465:AAHOLQB_uKo0YVdOfqGtEq0jdjzHjj8C1-U"
-YOUR_CHAT_ID = "ТВОЙ_CHAT_ID"  # чтобы логировать комплименты тебе
+NIKITA_CHAT_ID = 123456789  # сюда вставь настоящий chat_id Никиты
+YOUR_CHAT_ID = 987654321    # твой chat_id
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
@@ -94,23 +95,28 @@ async def handle_buttons(message: types.Message, state: FSMContext):
         else:
             await message.answer("Выберите действие с помощью кнопок.")
 
-# Функция отправки комплимента
+# Функция отправки комплимента Никите
 async def send_compliment():
     while True:
         now = datetime.now().time()
+        # Отправляем комплименты дважды в день
         if now >= time(10, 0) and now <= time(10, 5):
-            await send_to_all_boys()
+            await send_to_nikita()
         if now >= time(18, 0) and now <= time(18, 5):
-            await send_to_all_boys()
+            await send_to_nikita()
         await asyncio.sleep(60)  # проверяем каждую минуту
 
-async def send_to_all_boys():
-    for boy in boys:
-        compliment = random.choice(compliments)
-        # Здесь можно отправлять конкретному пользователю, например Никите
-        # await bot.send_message(chat_id=NIKITA_ID, text=compliment)
-        logging.info(f"Комплимент для {boy}: {compliment}")
-        await bot.send_message(chat_id=YOUR_CHAT_ID, text=f"Отправлен комплимент для {boy}: {compliment}")
+async def send_to_nikita():
+    compliment = random.choice(compliments)
+
+    # Отправляем Никите
+    await bot.send_message(chat_id=NIKITA_CHAT_ID, text=compliment)
+
+    # Тебе уведомление
+    await bot.send_message(chat_id=YOUR_CHAT_ID, text=f"✨ Никите отправлен комплимент: {compliment}")
+
+    # Лог для консоли
+    logging.info(f"Никите отправлен комплимент: {compliment}")
 
 # Запуск
 async def main():
@@ -123,6 +129,7 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
 
 
