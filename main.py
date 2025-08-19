@@ -9,37 +9,47 @@ from datetime import datetime, time
 import logging
 
 TOKEN = "8413897465:AAHOLQB_uKo0YVdOfqGtEq0jdjzHjj8C1-U"
-NIKITA_CHAT_ID = 123456789  # сюда вставь настоящий chat_id Никиты
-YOUR_CHAT_ID = 987654321    # твой chat_id
+NIKITA_ID = 123456789  # ID Никиты
+YOUR_CHAT_ID = 987654321  # Для логов
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
-# Настройка логирования
 logging.basicConfig(level=logging.INFO)
 
 # Кнопки
 btn_add_boy = KeyboardButton(text="Добавить парня")
 btn_add_fact = KeyboardButton(text="Добавить факт")
 btn_rating = KeyboardButton(text="Посмотреть рейтинг")
+btn_send_compliment = KeyboardButton(text="Отправить комплимент Никите")
 
 keyboard = ReplyKeyboardMarkup(
-    keyboard=[
-        [btn_add_boy],
-        [btn_add_fact],
-        [btn_rating]
-    ],
+    keyboard=[[btn_add_boy], [btn_add_fact], [btn_rating], [btn_send_compliment]],
     resize_keyboard=True
 )
 
-# Словари для данных
+# Данные
 boys = {}  # {"Имя": {"факты": [], "оценки": []}}
 compliments = [
-    "Ты отличный человек",
-    "Все хуесосы, ты один хороший",
-    "Ты очень умный дядька",
-    "Ты мой самый лучший друг ❤️",
-    "Ты просто невероятный!!"
+    "Никита, ты крутой!",
+    "Никита, ты лучший!",
+    "Никита, у тебя всё получится!",
+    "Никита, я тебя обожаю!",
+    "Никита, ты мой герой!",
+    "Никита, ты умный и талантливый!",
+    "Никита, у тебя невероятное обаяние!",
+    "Никита, ты настоящий мужчина!",
+    "Никита, ты делаешь мир лучше!",
+    "Никита, я горжусь тобой!"
+]
+
+nikita_reactions = [
+    "Уважаемый",
+    "Пиздец, беги от него",
+    "Слабоватый",
+    "Пойдёт",
+    "Он самый лучший, выбирай его",
+    "Ничего себе"
 ]
 
 # Старт
@@ -73,6 +83,12 @@ async def handle_buttons(message: types.Message, state: FSMContext):
             reply += f"{name}: {score}\n"
         await message.answer(reply)
 
+    elif text == "Отправить комплимент Никите":
+        compliment = random.choice(compliments)
+        await bot.send_message(chat_id=NIKITA_ID, text=compliment)
+        logging.info(f"Комплимент отправлен Никите вручную: {compliment}")
+        await message.answer(f"Комплимент отправлен Никите: {compliment}")
+
     else:
         current_state = await state.get_state()
         if current_state == "adding_boy":
@@ -90,33 +106,24 @@ async def handle_buttons(message: types.Message, state: FSMContext):
             data = await state.get_data()
             boy = data["current_boy"]
             boys[boy]["факты"].append(text)
-            await message.answer(f"Факт для {boy} добавлен!")
+            # Отправляем Никите факт + случайная реакция
+            reaction = random.choice(nikita_reactions)
+            await bot.send_message(chat_id=NIKITA_ID, text=f"Факт о {boy}: {text}\nРеакция: {reaction}")
+            logging.info(f"Факт о {boy} отправлен Никите: {text} / Реакция: {reaction}")
+            await message.answer(f"Факт для {boy} добавлен и отправлен Никите!")
             await state.clear()
         else:
             await message.answer("Выберите действие с помощью кнопок.")
 
-# Функция отправки комплимента Никите
+# Функция отправки комплиментов по времени
 async def send_compliment():
     while True:
         now = datetime.now().time()
-        # Отправляем комплименты дважды в день
-        if now >= time(10, 0) and now <= time(10, 5):
-            await send_to_nikita()
-        if now >= time(18, 0) and now <= time(18, 5):
-            await send_to_nikita()
-        await asyncio.sleep(60)  # проверяем каждую минуту
-
-async def send_to_nikita():
-    compliment = random.choice(compliments)
-
-    # Отправляем Никите
-    await bot.send_message(chat_id=NIKITA_CHAT_ID, text=compliment)
-
-    # Тебе уведомление
-    await bot.send_message(chat_id=YOUR_CHAT_ID, text=f"✨ Никите отправлен комплимент: {compliment}")
-
-    # Лог для консоли
-    logging.info(f"Никите отправлен комплимент: {compliment}")
+        if time(10, 0) <= now <= time(10, 5) or time(18, 0) <= now <= time(18, 5):
+            compliment = random.choice(compliments)
+            await bot.send_message(chat_id=NIKITA_ID, text=compliment)
+            logging.info(f"Комплимент отправлен Никите: {compliment}")
+        await asyncio.sleep(60)
 
 # Запуск
 async def main():
@@ -129,6 +136,7 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
 
 
