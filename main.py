@@ -1,18 +1,38 @@
-import asyncio
-from aiogram import Bot, Dispatcher, types, Router
+from aiogram import Bot, Dispatcher, types
 from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
 from aiogram.filters import Command
-from aiogram.utils.keyboard import ReplyKeyboardBuilder
-from datetime import datetime, time
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.memory import MemoryStorage
+import asyncio
 import random
+from datetime import datetime, time
+import logging
 
-BOT_TOKEN = "8413897465:AAHOLQB_uKo0YVdOfqGtEq0jdjzHjj8C1-U"
-bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher()
-router = Router()
+TOKEN = "8413897465:AAHOLQB_uKo0YVdOfqGtEq0jdjzHjj8C1-U"
+YOUR_CHAT_ID = "ТВОЙ_CHAT_ID"  # чтобы логировать комплименты тебе
 
-# ================== Хранилище ==================
-boys = {}  # {"Петя": [{"fact": "...", "reaction": None, "date": "..."}], ...}
+bot = Bot(token=TOKEN)
+dp = Dispatcher(storage=MemoryStorage())
+
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+
+# Кнопки
+btn_add_boy = KeyboardButton(text="Добавить парня")
+btn_add_fact = KeyboardButton(text="Добавить факт")
+btn_rating = KeyboardButton(text="Посмотреть рейтинг")
+
+keyboard = ReplyKeyboardMarkup(
+    keyboard=[
+        [btn_add_boy],
+        [btn_add_fact],
+        [btn_rating]
+    ],
+    resize_keyboard=True
+)
+
+# Словари для данных
+boys = {}  # {"Имя": {"факты": [], "оценки": []}}
 compliments = [
     "Ты отличный человек",
     "Все хуесосы, ты один хороший",
@@ -20,98 +40,90 @@ compliments = [
     "Ты мой самый лучший друг ❤️",
     "Ты просто невероятный!!"
 ]
-reactions = ["пиздец", "сразу замуж", "норм", "ниче", "непонятно", "промолчу"]
 
-# ================== Кнопки ==================
-kb = ReplyKeyboardBuilder()
-kb.add(KeyboardButton(text="Добавить парня"))
-kb.add(KeyboardButton(text="Добавить факт"))
-kb.add(KeyboardButton(text="Посмотреть рейтинг"))
-
-# ================== Хендлеры ==================
-@router.message(Command(commands=["start"]))
+# Старт
+@dp.message(Command("start"))
 async def start(message: types.Message):
-    await message.answer("Привет! Выбирай действие:", reply_markup=keyboard)
+    await message.answer("Привет! Выберите действие:", reply_markup=keyboard)
 
-@router.message(lambda m: m.text == "Добавить парня")
-async def add_boy(message: types.Message):
-    await message.answer("Напиши имя парня:")
+# Обработка кнопок
+@dp.message()
+async def handle_buttons(message: types.Message, state: FSMContext):
+    text = message.text
 
-    @router.message()
-    async def get_boy_name(msg: types.Message):
-        boys[msg.text] = []
-        await msg.answer(f"Парень {msg.text} добавлен!")
-        router.message.unregister(get_boy_name)
+    if text == "Добавить парня":
+        await message.answer("Напиши имя парня:")
+        await state.set_state("adding_boy")
 
-@router.message(lambda m: m.text == "Добавить факт")
-async def add_fact(message: types.Message):
-    if not boys:
-        await message.answer("Сначала добавь парня!")
-        return
-    await message.answer(f"Выбери парня из списка: {', '.join(boys.keys())}")
-
-    @router.message()
-    async def choose_boy(msg: types.Message):
-        if msg.text not in boys:
-            await msg.answer("Такого парня нет.")
+    elif text == "Добавить факт":
+        if not boys:
+            await message.answer("Сначала добавьте парня!")
             return
-        await msg.answer("Напиши факт о нём:")
-        
-        @router.message()
-        async def get_fact(fact_msg: types.Message):
-            boys[msg.text].append({"fact": fact_msg.text, "reaction": None, "date": datetime.now()})
-            await fact_msg.answer(f"Факт добавлен для {msg.text}!")
-            router.message.unregister(get_fact)
-            router.message.unregister(choose_boy)
-        
-    router.message.unregister(choose_boy)
+        await message.answer("К какому парню добавляем факт?")
+        await state.set_state("choosing_boy_for_fact")
 
-@router.message(lambda m: m.text == "Посмотреть рейтинг")
-async def show_rating(message: types.Message):
-    if not boys:
-        await message.answer("Нет данных.")
-        return
-    rating = []
-    for boy, facts in boys.items():
-        score = sum(1 for f in facts if f["reaction"] in ["пиздец", "норм", "сразу замуж"])  # пример оценки
-        rating.append((boy, score))
-    rating.sort(key=lambda x: x[1], reverse=True)
-    text = "\n".join([f"{b}: {s}" for b, s in rating])
-    await message.answer(f"Рейтинг:\n{text}")
+    elif text == "Посмотреть рейтинг":
+        if not boys:
+            await message.answer("Нет данных для рейтинга.")
+            return
+        reply = "Рейтинг парней:\n"
+        for name, data in boys.items():
+            score = sum(data.get("оценки", []))
+            reply += f"{name}: {score}\n"
+        await message.answer(reply)
 
-# ================== Комплименты Никите ==================
-async def send_compliments():
+    else:
+        current_state = await state.get_state()
+        if current_state == "adding_boy":
+            boys[text] = {"факты": [], "оценки": []}
+            await message.answer(f"Парень {text} добавлен!")
+            await state.clear()
+        elif current_state == "choosing_boy_for_fact":
+            if text not in boys:
+                await message.answer("Такого парня нет!")
+                return
+            await state.update_data(current_boy=text)
+            await message.answer("Напишите факт:")
+            await state.set_state("adding_fact")
+        elif current_state == "adding_fact":
+            data = await state.get_data()
+            boy = data["current_boy"]
+            boys[boy]["факты"].append(text)
+            await message.answer(f"Факт для {boy} добавлен!")
+            await state.clear()
+        else:
+            await message.answer("Выберите действие с помощью кнопок.")
+
+# Функция отправки комплимента
+async def send_compliment():
     while True:
         now = datetime.now().time()
-        if now >= time(9, 0) and now < time(9, 1) or now >= time(21, 0) and now < time(21, 1):
-            compl = random.choice(compliments)
-            try:
-                await bot.send_message(chat_id="ID_НИКИТЫ", text=compl)
-            except:
-                pass
-        await asyncio.sleep(60)
+        if now >= time(10, 0) and now <= time(10, 5):
+            await send_to_all_boys()
+        if now >= time(18, 0) and now <= time(18, 5):
+            await send_to_all_boys()
+        await asyncio.sleep(60)  # проверяем каждую минуту
 
-# ================== Реакции на факты ==================
-async def simulate_reactions():
-    while True:
-        for boy, facts in boys.items():
-            for f in facts:
-                if f["reaction"] is None:
-                    f["reaction"] = random.choice(reactions)
-                    await bot.send_message(chat_id="ТВОЙ_ID", text=f"Никита отреагировал на факт про {boy}: {f['reaction']}")
-        await asyncio.sleep(300)
+async def send_to_all_boys():
+    for boy in boys:
+        compliment = random.choice(compliments)
+        # Здесь можно отправлять конкретному пользователю, например Никите
+        # await bot.send_message(chat_id=NIKITA_ID, text=compliment)
+        logging.info(f"Комплимент для {boy}: {compliment}")
+        await bot.send_message(chat_id=YOUR_CHAT_ID, text=f"Отправлен комплимент для {boy}: {compliment}")
 
-# ================== Старт ==================
+# Запуск
 async def main():
-    dp.include_router(router)
-    await asyncio.gather(
-        dp.start_polling(bot),
-        send_compliments(),
-        simulate_reactions()
-    )
+    try:
+        logging.info("Бот запущен!")
+        asyncio.create_task(send_compliment())
+        await dp.start_polling(bot)
+    finally:
+        await bot.session.close()
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
 
 
