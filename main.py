@@ -9,6 +9,12 @@ CHAT_ID_NIKITA = 123456789  # Никита
 CHAT_ID_YOU = 987654321     # Ты
 
 logging.basicConfig(level=logging.INFO)
+# Удаляем webhook перед polling
+async def remove_webhook():
+    bot = Bot(token=BOT_TOKEN)
+    await bot.delete_webhook()
+    await bot.close()
+    print("Webhook удалён")
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
