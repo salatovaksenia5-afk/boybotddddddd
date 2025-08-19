@@ -1,19 +1,18 @@
 import asyncio
 import random
-from datetime import datetime, time, timedelta
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiogram import F
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
-BOT_TOKEN = "8413897465:AAHOLQB_uKo0YVdOfqGtEq0jdjzHjj8C1-U"
-NIKITA_ID = 123456789  # твой Никита Telegram ID
-MY_ID = 987654321      # твой ID
+# ------------------ Настройки ------------------
+BOT_TOKEN = "8413897465:AAHOLQB_uKo0YVdOfqGtEq0jdjzHjj8C1-U"  # Вставь сюда токен
+NIKITA_ID = 123456789  # ID Никиты
+USER_ID = 987654321  # Твой ID для уведомлений
 
-# Данные системы
-boys = []  # список парней
-facts = {}  # {boy_name: [факт1, факт2, ...]}
-reactions_list = ["пиздец", "сразу замуж", "норм", "ниче", "непонятно", "промолчу"]
+# ------------------ Данные ------------------
+boys = []  # Список парней
+facts = {}  # Факты о парнях: { "Имя": [{"fact": "факт", "reaction": None}] }
+
 compliments = [
     "Ты отличный человек",
     "все хуесосы, ты один хороший",
@@ -22,105 +21,106 @@ compliments = [
     "ты просто невероятный!!"
 ]
 
-# Удаляем webhook
-async def remove_webhook():
-    bot = Bot(token=BOT_TOKEN)
-    await bot.delete_webhook()
-    await bot.close()
-    print("Webhook удалён")
+reactions_list = ["пиздец", "сразу замуж", "норм", "ниче", "непонятно", "промолчу"]
 
-# Основной бот
-async def main():
-    await remove_webhook()
-    bot = Bot(token=BOT_TOKEN)
-    dp = Dispatcher()
+# ------------------ Инициализация ------------------
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher()
 
-    # Функция для авто-комплиментов дважды в день
-    async def send_daily_compliments():
-        while True:
-            now = datetime.now()
-            for target_time in [time(9,0), time(21,0)]:  # 9:00 и 21:00
-                target_datetime = datetime.combine(now.date(), target_time)
-                if now > target_datetime:
-                    target_datetime += timedelta(days=1)
-                wait_seconds = (target_datetime - now).total_seconds()
-                await asyncio.sleep(wait_seconds)
+# ------------------ Клавиатура ------------------
+kb = ReplyKeyboardBuilder()
+kb.add(KeyboardButton("Добавить парня"))
+kb.add(KeyboardButton("Добавить факт"))
+kb.add(KeyboardButton("Посмотреть рейтинг"))
+
+# ------------------ Хелперы ------------------
+async def send_compliment():
+    while True:
+        for hour in [10, 18]:  # Два раза в день: 10:00 и 18:00
+            now_hour = int(asyncio.get_event_loop().time()) % 24
+            if now_hour == hour:
                 compliment = random.choice(compliments)
-                await bot.send_message(NIKITA_ID, f"Комплимент для тебя: {compliment}")
+                await bot.send_message(NIKITA_ID, compliment)
+                await bot.send_message(USER_ID, f"Комплимент отправлен: {compliment}")
+            await asyncio.sleep(3600)  # Проверка каждый час
 
-    # Команда /start
-    @dp.message()
-    async def start_handler(message: types.Message):
-        keyboard = InlineKeyboardBuilder()
-        keyboard.row(InlineKeyboardButton(text="Добавить парня", callback_data="add_boy"))
-        keyboard.row(InlineKeyboardButton(text="Добавить факт", callback_data="add_fact"))
-        keyboard.row(InlineKeyboardButton(text="Посмотреть рейтинг", callback_data="rating"))
-        await message.answer("Привет! Выбирай действие:", reply_markup=keyboard.as_markup())
+def calculate_rating():
+    rating = {}
+    for boy, boy_facts in facts.items():
+        pos = sum(1 for f in boy_facts if f["reaction"] in ["сразу замуж", "норм", "ниче"])
+        neg = sum(1 for f in boy_facts if f["reaction"] in ["пиздец", "непонятно"])
+        rating[boy] = {"Позитив": pos, "Негатив": neg}
+    return rating
 
-    # Обработка кнопок
-    @dp.callback_query()
-    async def callback_handler(callback: types.CallbackQuery):
-        data = callback.data
+# ------------------ Хэндлеры ------------------
+@dp.message()
+async def handle_all_messages(message: types.Message):
+    if message.text == "Добавить парня":
+        await message.answer("Введите имя парня:")
+        dp.register_message_handler(add_boy)
+    elif message.text == "Добавить факт":
+        if not boys:
+            await message.answer("Сначала добавьте парня!")
+            return
+        buttons = [KeyboardButton(name) for name in boys]
+        markup = ReplyKeyboardMarkup(keyboard=[buttons], resize_keyboard=True)
+        await message.answer("Выберите парня для факта:", reply_markup=markup)
+        dp.register_message_handler(select_boy_for_fact)
+    elif message.text == "Посмотреть рейтинг":
+        rating = calculate_rating()
+        if not rating:
+            await message.answer("Нет данных для рейтинга.")
+        else:
+            msg = ""
+            for boy, r in rating.items():
+                msg += f"{boy}: +{r['Позитив']} / -{r['Негатив']}\n"
+            await message.answer(msg)
+    else:
+        await message.answer("Выберите действие с помощью кнопок.", reply_markup=kb.as_markup(resize_keyboard=True))
 
-        if data == "add_boy":
-            await callback.message.answer("Отправь имя парня:")
-            @dp.message(F.chat.id == callback.from_user.id)
-            async def add_boy_name(message: types.Message):
-                boy_name = message.text.strip()
-                if boy_name not in boys:
-                    boys.append(boy_name)
-                    facts[boy_name] = []
-                    await message.answer(f"Парень {boy_name} добавлен.")
-                else:
-                    await message.answer(f"{boy_name} уже есть.")
-                dp.message.handlers.pop()  # убираем временный хэндлер
+async def add_boy(message: types.Message):
+    name = message.text.strip()
+    if name in boys:
+        await message.answer("Такой парень уже есть.")
+    else:
+        boys.append(name)
+        facts[name] = []
+        await message.answer(f"Парень {name} добавлен.", reply_markup=kb.as_markup(resize_keyboard=True))
 
-        elif data == "add_fact":
-            if not boys:
-                await callback.message.answer("Сначала добавь парней!")
-                return
-            keyboard = InlineKeyboardBuilder()
-            for boy in boys:
-                keyboard.button(text=boy, callback_data=f"fact_{boy}")
-            await callback.message.answer("Выбери парня:", reply_markup=keyboard.as_markup())
+async def select_boy_for_fact(message: types.Message):
+    boy = message.text.strip()
+    if boy not in boys:
+        await message.answer("Парень не найден.")
+        return
+    await message.answer(f"Введите факт о {boy}:")
+    dp.register_message_handler(lambda msg: add_fact(msg, boy))
 
-        elif data.startswith("fact_"):
-            boy_name = data[5:]
-            await callback.message.answer(f"Напиши факт для {boy_name}:")
-            @dp.message(F.chat.id == callback.from_user.id)
-            async def add_fact_message(message: types.Message):
-                fact = message.text.strip()
-                facts[boy_name].append(fact)
-                # отправляем Никите уведомление с выбором реакции
-                keyboard = InlineKeyboardMarkup(row_width=3)
-                for r in reactions_list:
-                    keyboard.add(InlineKeyboardButton(r, callback_data=f"react_{boy_name}_{len(facts[boy_name])-1}_{r}"))
-                await bot.send_message(NIKITA_ID, f"Новая информация про {boy_name}: {fact}", reply_markup=keyboard)
-                await message.answer(f"Факт добавлен для {boy_name}.")
-                dp.message.handlers.pop()
+async def add_fact(message: types.Message, boy: str):
+    fact_text = message.text.strip()
+    fact_entry = {"fact": fact_text, "reaction": None}
+    facts[boy].append(fact_entry)
+    # Отправка Никите для реакции
+    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+    for r in reactions_list:
+        keyboard.add(KeyboardButton(r))
+    sent = await bot.send_message(NIKITA_ID, f"Факт о {boy}: {fact_text}", reply_markup=keyboard)
+    # Логируем, что факт отправлен
+    await bot.send_message(USER_ID, f"Факт про {boy} отправлен Никите.")
+    
+    # Регистрируем хэндлер на реакцию Никиты
+    dp.register_message_handler(lambda msg: add_reaction(msg, boy, fact_entry), lambda msg: msg.from_user.id == NIKITA_ID and msg.text in reactions_list)
 
-        elif data.startswith("react_"):
-            parts = data.split("_")
-            boy_name = parts[1]
-            fact_index = int(parts[2])
-            reaction = parts[3]
-            fact = facts[boy_name][fact_index]
-            await bot.send_message(MY_ID, f"Никита отреагировал на факт про {boy_name}: '{fact}' → {reaction}")
-            await bot.answer_callback_query(callback.id, text="Реакция сохранена!")
+async def add_reaction(message: types.Message, boy: str, fact_entry: dict):
+    reaction = message.text.strip()
+    fact_entry["reaction"] = reaction
+    await bot.send_message(USER_ID, f"Никита отреагировал на факт про {boy}: {reaction}")
 
-        elif data == "rating":
-            text = ""
-            for boy, facts_list in facts.items():
-                text += f"{boy}: {len(facts_list)} фактов\n"
-            if text == "":
-                text = "Фактов пока нет."
-            await callback.message.answer(text)
+# ------------------ Запуск ------------------
+async def main():
+    asyncio.create_task(send_compliment())
+    await dp.start_polling(bot)
 
-    # Запуск авто-комплиментов параллельно с polling
-    await asyncio.gather(
-        dp.start_polling(bot, skip_updates=True),
-        send_daily_compliments()
-    )
+if __name__ == "__main__":
+    asyncio.run(main())
 
-asyncio.run(main())
 
